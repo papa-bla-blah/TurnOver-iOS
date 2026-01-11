@@ -4,126 +4,157 @@ import SwiftUI
 
 public struct ExportListingView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var preferences: UserPreferences
+    @Environment(\.dismiss) private var dismiss
+    
     let analysisResult: AIAnalysisResult
     let platforms: [MarketplacePlatform]
     
-    @State private var copied = false
+    @State private var listingText: String = ""
+    @State private var showShareSheet = false
+    @State private var showCopiedAlert = false
     
-    private var listingText: String {
-        let item = Item(
-            name: analysisResult.name,
-            description: analysisResult.description,
-            category: analysisResult.category,
-            condition: analysisResult.condition,
-            estimatedValue: analysisResult.estimatedValue,
-            confidenceScore: analysisResult.confidenceScore,
-            aiInsights: analysisResult.insights
-        )
-        return appState.generateListingText(for: item, platforms: platforms)
+    public init(analysisResult: AIAnalysisResult, platforms: [MarketplacePlatform]) {
+        self.analysisResult = analysisResult
+        self.platforms = platforms
     }
     
     public var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
+                // Platform Tags
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.spacingSM) {
+                        ForEach(platforms, id: \.self) { platform in
+                            Text(platform.displayName)
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(AppTheme.primary.opacity(0.1))
+                                .foregroundColor(AppTheme.primary)
+                                .cornerRadius(AppTheme.radiusXS)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, AppTheme.spacingSM)
+                
+                // Listing Preview
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
-                        // Success header
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(AppTheme.success)
-                                .font(.title)
-                            Text("Listing Ready!")
-                                .font(.title2)
-                                .fontWeight(.bold)
+                        // Photo
+                        if let photo = appState.capturedPhotos.first,
+                           let data = photo.imageData,
+                           let uiImage = UIImage(data: data) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 200)
+                                .cornerRadius(AppTheme.radiusMD)
+                                .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
                         
-                        // Platforms
-                        Text("Platforms: \(platforms.map { $0.displayName }.joined(separator: ", "))")
-                            .font(.subheadline)
-                            .foregroundColor(AppTheme.textSecondary)
-                            .padding(.horizontal)
+                        // Generated Listing
+                        Text("Generated Listing")
+                            .font(.headline)
                         
-                        // Listing text
-                        Text(listingText)
+                        TextEditor(text: $listingText)
                             .font(.body)
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(AppTheme.background)
-                            .cornerRadius(AppTheme.radiusMD)
-                            .padding(.horizontal)
+                            .frame(minHeight: 200)
+                            .padding(AppTheme.spacingSM)
+                            .background(AppTheme.secondaryBackground)
+                            .cornerRadius(AppTheme.radiusSM)
+                            .accessibilityLabel("Listing text editor")
                     }
+                    .padding()
                 }
                 
-                // Action buttons
+                // Action Buttons
                 VStack(spacing: AppTheme.spacingMD) {
-                    Button(action: copyToClipboard) {
+                    // Share
+                    Button(action: {
+                        HapticManager.impact()
+                        showShareSheet = true
+                    }) {
                         HStack {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            Text(copied ? "Copied!" : "Copy to Clipboard")
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share Listing")
                         }
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     
-                    Button(action: shareText) {
+                    // Copy
+                    Button(action: {
+                        HapticManager.notification(.success)
+                        UIPasteboard.general.string = listingText
+                        showCopiedAlert = true
+                    }) {
                         HStack {
-                            Image(systemName: "square.and.arrow.up")
-                            Text("Share")
+                            Image(systemName: "doc.on.doc")
+                            Text("Copy to Clipboard")
                         }
                     }
                     .buttonStyle(SecondaryButtonStyle())
                     
-                    Button("Done") {
-                        saveAndDismiss()
+                    // Save & Finish
+                    Button(action: {
+                        HapticManager.impact()
+                        saveAndFinish()
+                    }) {
+                        Text("Save to Inventory & Done")
+                            .font(.subheadline)
                     }
                     .foregroundColor(AppTheme.textSecondary)
                 }
                 .padding()
+                .background(AppTheme.surface)
             }
-            .navigationTitle("Export")
+            .navigationTitle("Listing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Back") {
-                        presentationMode.wrappedValue.dismiss()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        HapticManager.impact(.light)
+                        dismiss()
                     }
                 }
             }
+            .onAppear {
+                generateListing()
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(items: [listingText])
+            }
+            .alert("Copied!", isPresented: $showCopiedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Listing copied to clipboard")
+            }
         }
     }
     
-    private func copyToClipboard() {
-        UIPasteboard.general.string = listingText
-        copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            copied = false
-        }
+    private func generateListing() {
+        let item = appState.createItem(from: analysisResult)
+        listingText = appState.generateListingText(for: item, platforms: platforms)
     }
     
-    private func shareText() {
-        let activityVC = UIActivityViewController(
-            activityItems: [listingText],
-            applicationActivities: nil
-        )
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootVC = window.rootViewController {
-            rootVC.present(activityVC, animated: true)
-        }
-    }
-    
-    private func saveAndDismiss() {
-        var item = appState.createItem(from: analysisResult)
-        item.selectedPlatforms = platforms
-        item.status = .readyToList
+    private func saveAndFinish() {
+        let item = appState.createItem(from: analysisResult)
         appState.saveItem(item)
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.dismiss(animated: true)
-        }
+        HapticManager.notification(.success)
+        dismiss()
     }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

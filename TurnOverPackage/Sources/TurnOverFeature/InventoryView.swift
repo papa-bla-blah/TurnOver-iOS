@@ -1,51 +1,188 @@
 import SwiftUI
 
-// MARK: - Inventory View
+// MARK: - Inventory View (HIG Compliant)
 
 public struct InventoryView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var preferences: UserPreferences
+    @State private var searchText = ""
+    @State private var sortOption: SortOption = .dateNewest
+    @State private var showSortOptions = false
+    
+    private var filteredItems: [Item] {
+        var items = appState.items
+        
+        // Filter
+        if !searchText.isEmpty {
+            items = items.filter {
+                $0.name.localizedCaseInsensitiveContains(searchText) ||
+                $0.category.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        
+        // Sort
+        switch sortOption {
+        case .dateNewest:
+            items.sort { $0.dateAdded > $1.dateAdded }
+        case .dateOldest:
+            items.sort { $0.dateAdded < $1.dateAdded }
+        case .valueHighest:
+            items.sort { $0.estimatedValue > $1.estimatedValue }
+        case .valueLowest:
+            items.sort { $0.estimatedValue < $1.estimatedValue }
+        case .nameAZ:
+            items.sort { $0.name < $1.name }
+        }
+        
+        return items
+    }
+    
+    private var totalValue: Double {
+        appState.items.reduce(0) { $0 + $1.estimatedValue }
+    }
+    
+    public init() {}
     
     public var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if appState.items.isEmpty {
-                // Empty state
-                VStack(spacing: AppTheme.spacingMD) {
-                    Image(systemName: "tray")
-                        .font(.system(size: 60))
-                        .foregroundColor(AppTheme.textSecondary.opacity(0.5))
-                    
-                    Text("No items yet")
-                        .font(.headline)
-                        .foregroundColor(AppTheme.textSecondary)
-                    
-                    Text("Capture your first item to get started")
-                        .font(.subheadline)
-                        .foregroundColor(AppTheme.textSecondary.opacity(0.8))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Empty State
+                EmptyInventoryView()
             } else {
-                List {
-                    ForEach(appState.items) { item in
-                        InventoryRow(item: item)
+                // Summary Header
+                InventorySummaryHeader(
+                    itemCount: appState.items.count,
+                    totalValue: totalValue
+                )
+                
+                // Search and Sort
+                HStack {
+                    // Search
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(AppTheme.textSecondary)
+                        TextField("Search items...", text: $searchText)
+                            .textFieldStyle(.plain)
                     }
-                    .onDelete(perform: deleteItems)
+                    .padding(AppTheme.spacingSM)
+                    .background(AppTheme.secondaryBackground)
+                    .cornerRadius(AppTheme.radiusSM)
+                    
+                    // Sort Button
+                    Menu {
+                        ForEach(SortOption.allCases, id: \.self) { option in
+                            Button(action: {
+                                HapticManager.selection()
+                                sortOption = option
+                            }) {
+                                HStack {
+                                    Text(option.displayName)
+                                    if sortOption == option {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down.circle")
+                            .font(.title3)
+                            .foregroundColor(AppTheme.primary)
+                    }
+                    .accessibilityLabel("Sort options")
                 }
-                .listStyle(.plain)
+                .padding()
+                
+                // Item List
+                ScrollView {
+                    LazyVStack(spacing: AppTheme.spacingMD) {
+                        ForEach(filteredItems) { item in
+                            InventoryItemCard(item: item)
+                                .contextMenu {
+                                    Button(role: .destructive, action: {
+                                        HapticManager.notification(.warning)
+                                        appState.deleteItem(item)
+                                    }) {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, AppTheme.spacingXL)
+                }
             }
         }
         .navigationTitle("Inventory")
     }
-    
-    private func deleteItems(at offsets: IndexSet) {
-        for index in offsets {
-            appState.deleteItem(appState.items[index])
+}
+
+// MARK: - Empty Inventory View
+
+struct EmptyInventoryView: View {
+    var body: some View {
+        VStack(spacing: AppTheme.spacingLG) {
+            Spacer()
+            
+            Image(systemName: "archivebox")
+                .font(.system(size: 60))
+                .foregroundColor(AppTheme.textTertiary)
+            
+            Text("No Items Yet")
+                .font(.title2.bold())
+            
+            Text("Items you save will appear here.\nStart by capturing a photo of something to sell or donate.")
+                .font(.subheadline)
+                .foregroundColor(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AppTheme.spacingXL)
+            
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
-// MARK: - Inventory Row
+// MARK: - Inventory Summary Header
 
-struct InventoryRow: View {
+struct InventorySummaryHeader: View {
+    let itemCount: Int
+    let totalValue: Double
+    
+    var body: some View {
+        HStack(spacing: AppTheme.spacingLG) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(itemCount)")
+                    .font(.title.bold())
+                Text("Items")
+                    .font(.caption)
+                    .foregroundColor(AppTheme.textSecondary)
+            }
+            
+            Divider()
+                .frame(height: 40)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("$\(String(format: "%.0f", totalValue))")
+                    .font(.title.bold())
+                    .foregroundColor(AppTheme.success)
+                Text("Total Value")
+                    .font(.caption)
+                    .foregroundColor(AppTheme.textSecondary)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(AppTheme.secondaryBackground)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(itemCount) items, total value $\(Int(totalValue))")
+    }
+}
+
+// MARK: - Inventory Item Card
+
+struct InventoryItemCard: View {
     let item: Item
     
     var body: some View {
@@ -57,19 +194,19 @@ struct InventoryRow: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 60, height: 60)
+                    .frame(width: 70, height: 70)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
             } else {
                 RoundedRectangle(cornerRadius: AppTheme.radiusSM)
-                    .fill(AppTheme.background)
-                    .frame(width: 60, height: 60)
+                    .fill(AppTheme.secondaryBackground)
+                    .frame(width: 70, height: 70)
                     .overlay(
                         Image(systemName: "photo")
-                            .foregroundColor(AppTheme.textSecondary)
+                            .foregroundColor(AppTheme.textTertiary)
                     )
             }
             
-            // Info
+            // Details
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
                     .font(.headline)
@@ -79,16 +216,16 @@ struct InventoryRow: View {
                     Text(item.category)
                         .font(.caption)
                         .foregroundColor(AppTheme.textSecondary)
-                    
                     Text("•")
-                        .foregroundColor(AppTheme.textSecondary)
-                    
+                        .foregroundColor(AppTheme.textTertiary)
                     Text(item.condition.displayName)
                         .font(.caption)
                         .foregroundColor(AppTheme.textSecondary)
                 }
                 
-                StatusBadge(status: item.status)
+                Text(item.dateAdded, style: .date)
+                    .font(.caption2)
+                    .foregroundColor(AppTheme.textTertiary)
             }
             
             Spacer()
@@ -98,43 +235,31 @@ struct InventoryRow: View {
                 .font(.headline)
                 .foregroundColor(AppTheme.success)
         }
-        .padding(.vertical, AppTheme.spacingSM)
+        .padding()
+        .background(AppTheme.surface)
+        .cornerRadius(AppTheme.radiusMD)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.name), \(item.category), $\(Int(item.estimatedValue))")
     }
 }
 
-// MARK: - Status Badge
+// MARK: - Sort Option
 
-struct StatusBadge: View {
-    let status: ItemStatus
+enum SortOption: CaseIterable {
+    case dateNewest
+    case dateOldest
+    case valueHighest
+    case valueLowest
+    case nameAZ
     
-    private var color: Color {
-        switch status {
-        case .draft: return AppTheme.textSecondary
-        case .readyToList: return AppTheme.accent
-        case .listed: return AppTheme.primary
-        case .sold: return AppTheme.success
-        case .donated: return AppTheme.secondary
+    var displayName: String {
+        switch self {
+        case .dateNewest: return "Newest First"
+        case .dateOldest: return "Oldest First"
+        case .valueHighest: return "Highest Value"
+        case .valueLowest: return "Lowest Value"
+        case .nameAZ: return "Name (A-Z)"
         }
-    }
-    
-    private var text: String {
-        switch status {
-        case .draft: return "Draft"
-        case .readyToList: return "Ready to List"
-        case .listed: return "Listed"
-        case .sold: return "Sold"
-        case .donated: return "Donated"
-        }
-    }
-    
-    var body: some View {
-        Text(text)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.2))
-            .foregroundColor(color)
-            .cornerRadius(4)
     }
 }

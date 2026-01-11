@@ -4,38 +4,44 @@ import SwiftUI
 
 public struct MarketplaceSelectionView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var preferences: UserPreferences
+    @Environment(\.dismiss) private var dismiss
+    
     let analysisResult: AIAnalysisResult
     
     @State private var selectedPlatforms: Set<MarketplacePlatform> = []
     @State private var showExport = false
     
+    public init(analysisResult: AIAnalysisResult) {
+        self.analysisResult = analysisResult
+    }
+    
     public var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
-                // Header
+                // Header info
                 VStack(spacing: AppTheme.spacingSM) {
-                    Text("Where do you want to sell?")
+                    Text("Select where to sell")
                         .font(.headline)
-                    Text("Select one or more platforms")
+                    Text("Choose one or more platforms")
                         .font(.subheadline)
                         .foregroundColor(AppTheme.textSecondary)
                 }
                 .padding()
                 
-                // Platform grid
+                // Platform Grid
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppTheme.spacingMD) {
-                        ForEach(MarketplacePlatform.allCases) { platform in
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: AppTheme.spacingMD) {
+                        ForEach(MarketplacePlatform.allCases, id: \.self) { platform in
                             PlatformCard(
                                 platform: platform,
                                 isSelected: selectedPlatforms.contains(platform),
                                 onTap: {
-                                    if selectedPlatforms.contains(platform) {
-                                        selectedPlatforms.remove(platform)
-                                    } else {
-                                        selectedPlatforms.insert(platform)
-                                    }
+                                    HapticManager.selection()
+                                    togglePlatform(platform)
                                 }
                             )
                         }
@@ -43,25 +49,46 @@ public struct MarketplaceSelectionView: View {
                     .padding()
                 }
                 
-                // Continue button
-                Button(action: { showExport = true }) {
-                    HStack {
-                        Text("Generate Listing")
-                        Text("(\(selectedPlatforms.count))")
-                            .opacity(0.8)
+                // Continue Button
+                VStack(spacing: AppTheme.spacingSM) {
+                    if !selectedPlatforms.isEmpty {
+                        Text("\(selectedPlatforms.count) platform\(selectedPlatforms.count > 1 ? "s" : "") selected")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
                     }
+                    
+                    Button(action: {
+                        HapticManager.impact()
+                        // Remember selection for next time
+                        preferences.rememberPlatforms(Array(selectedPlatforms))
+                        showExport = true
+                    }) {
+                        HStack {
+                            Image(systemName: "doc.text")
+                            Text("Create Listing")
+                        }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(selectedPlatforms.isEmpty)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(selectedPlatforms.isEmpty)
                 .padding()
+                .background(AppTheme.surface)
             }
             .navigationTitle("Sell")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Back") {
-                        presentationMode.wrappedValue.dismiss()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        HapticManager.impact(.light)
+                        dismiss()
                     }
+                }
+            }
+            .onAppear {
+                // Load last used platforms
+                let remembered = preferences.getRememberedPlatforms()
+                if !remembered.isEmpty {
+                    selectedPlatforms = Set(remembered)
                 }
             }
             .fullScreenCover(isPresented: $showExport) {
@@ -70,7 +97,16 @@ public struct MarketplaceSelectionView: View {
                     platforms: Array(selectedPlatforms)
                 )
                 .environmentObject(appState)
+                .environmentObject(preferences)
             }
+        }
+    }
+    
+    private func togglePlatform(_ platform: MarketplacePlatform) {
+        if selectedPlatforms.contains(platform) {
+            selectedPlatforms.remove(platform)
+        } else {
+            selectedPlatforms.insert(platform)
         }
     }
 }
@@ -86,25 +122,65 @@ struct PlatformCard: View {
         Button(action: onTap) {
             VStack(spacing: AppTheme.spacingSM) {
                 Image(systemName: platform.icon)
-                    .font(.title)
+                    .font(.system(size: 32))
                     .foregroundColor(isSelected ? .white : AppTheme.primary)
                 
                 Text(platform.displayName)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                    .font(.subheadline.weight(.medium))
                     .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity)
-            .padding()
-            .background(isSelected ? AppTheme.primary : AppTheme.surface)
+            .frame(height: 100)
+            .background(isSelected ? AppTheme.primary : AppTheme.secondaryBackground)
             .cornerRadius(AppTheme.radiusMD)
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.radiusMD)
-                    .stroke(isSelected ? AppTheme.primary : Color.gray.opacity(0.3), lineWidth: isSelected ? 0 : 1)
+                    .stroke(isSelected ? AppTheme.primary : Color.clear, lineWidth: 2)
             )
-            .shadow(color: isSelected ? AppTheme.primary.opacity(0.3) : Color.clear, radius: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(platform.displayName), \(isSelected ? "selected" : "not selected")")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - Marketplace Platform
+
+public enum MarketplacePlatform: String, CaseIterable {
+    case ebay
+    case facebook
+    case offerup
+    case craigslist
+    case poshmark
+    case mercari
+    case nextdoor
+    case etsy
+    
+    public var displayName: String {
+        switch self {
+        case .ebay: return "eBay"
+        case .facebook: return "Facebook Marketplace"
+        case .offerup: return "OfferUp"
+        case .craigslist: return "Craigslist"
+        case .poshmark: return "Poshmark"
+        case .mercari: return "Mercari"
+        case .nextdoor: return "Nextdoor"
+        case .etsy: return "Etsy"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .ebay: return "cart.fill"
+        case .facebook: return "person.2.fill"
+        case .offerup: return "tag.fill"
+        case .craigslist: return "list.bullet"
+        case .poshmark: return "bag.fill"
+        case .mercari: return "shippingbox.fill"
+        case .nextdoor: return "house.fill"
+        case .etsy: return "paintbrush.fill"
         }
     }
 }

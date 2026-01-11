@@ -4,54 +4,103 @@ import SwiftUI
 
 public struct CharitySelectionView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var preferences: UserPreferences
+    @Environment(\.dismiss) private var dismiss
+    
     let analysisResult: AIAnalysisResult
     
     @State private var selectedCharity: CharityOrganization?
     @State private var showExport = false
+    @State private var searchText = ""
+    
+    private var filteredCharities: [CharityOrganization] {
+        if searchText.isEmpty {
+            return CharityOrganization.commonCharities
+        }
+        return CharityOrganization.commonCharities.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.category.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    public init(analysisResult: AIAnalysisResult) {
+        self.analysisResult = analysisResult
+    }
     
     public var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
-                // Header
-                VStack(spacing: AppTheme.spacingSM) {
-                    Text("Choose a charity")
-                        .font(.headline)
-                    Text("Select where you'd like to donate")
-                        .font(.subheadline)
+                // Search
+                HStack {
+                    Image(systemName: "magnifyingglass")
                         .foregroundColor(AppTheme.textSecondary)
+                    TextField("Search charities...", text: $searchText)
+                        .textFieldStyle(.plain)
                 }
                 .padding()
+                .background(AppTheme.secondaryBackground)
+                .cornerRadius(AppTheme.radiusSM)
+                .padding()
                 
-                // Charity list
+                // Charity List
                 ScrollView {
-                    VStack(spacing: AppTheme.spacingMD) {
-                        ForEach(CharityOrganization.defaultCharities) { charity in
+                    LazyVStack(spacing: AppTheme.spacingMD) {
+                        ForEach(filteredCharities) { charity in
                             CharityCard(
                                 charity: charity,
                                 isSelected: selectedCharity?.id == charity.id,
-                                onTap: { selectedCharity = charity }
+                                onTap: {
+                                    HapticManager.selection()
+                                    selectedCharity = charity
+                                }
                             )
                         }
                     }
-                    .padding()
+                    .padding(.horizontal)
                 }
                 
-                // Continue button
-                Button(action: { showExport = true }) {
-                    Text("Generate Receipt")
+                // Continue Button
+                VStack(spacing: AppTheme.spacingSM) {
+                    if let charity = selectedCharity {
+                        Text("Selected: \(charity.name)")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
+                    }
+                    
+                    Button(action: {
+                        HapticManager.impact()
+                        // Remember selection
+                        if let charity = selectedCharity {
+                            preferences.lastUsedCharityId = charity.id
+                        }
+                        showExport = true
+                    }) {
+                        HStack {
+                            Image(systemName: "doc.text")
+                            Text("Create Receipt")
+                        }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(selectedCharity == nil)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(selectedCharity == nil)
                 .padding()
+                .background(AppTheme.surface)
             }
             .navigationTitle("Donate")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Back") {
-                        presentationMode.wrappedValue.dismiss()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        HapticManager.impact(.light)
+                        dismiss()
                     }
+                }
+            }
+            .onAppear {
+                // Load last used charity
+                if let lastId = preferences.lastUsedCharityId,
+                   let charity = CharityOrganization.commonCharities.first(where: { $0.id == lastId }) {
+                    selectedCharity = charity
                 }
             }
             .fullScreenCover(isPresented: $showExport) {
@@ -61,6 +110,7 @@ public struct CharitySelectionView: View {
                         charity: charity
                     )
                     .environmentObject(appState)
+                    .environmentObject(preferences)
                 }
             }
         }
@@ -77,39 +127,135 @@ struct CharityCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: AppTheme.spacingMD) {
-                // Icon
-                Image(systemName: "heart.circle.fill")
-                    .font(.title)
-                    .foregroundColor(isSelected ? .white : AppTheme.secondary)
+                Image(systemName: charity.icon)
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .white : AppTheme.primary)
+                    .frame(width: 50, height: 50)
+                    .background(isSelected ? AppTheme.primary : AppTheme.secondaryBackground)
+                    .cornerRadius(AppTheme.radiusSM)
                 
-                // Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(charity.name)
                         .font(.headline)
-                        .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
-                    
-                    if !charity.ein.isEmpty {
-                        Text("EIN: \(charity.ein)")
-                            .font(.caption)
-                            .foregroundColor(isSelected ? .white.opacity(0.8) : AppTheme.textSecondary)
-                    }
+                        .foregroundColor(AppTheme.textPrimary)
+                    Text(charity.category)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.textSecondary)
                 }
                 
                 Spacer()
                 
-                // Checkmark
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.success)
                 }
             }
             .padding()
-            .background(isSelected ? AppTheme.secondary : AppTheme.surface)
+            .background(isSelected ? AppTheme.primary.opacity(0.1) : AppTheme.surface)
             .cornerRadius(AppTheme.radiusMD)
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.radiusMD)
-                    .stroke(isSelected ? AppTheme.secondary : Color.gray.opacity(0.3), lineWidth: isSelected ? 0 : 1)
+                    .stroke(isSelected ? AppTheme.primary : AppTheme.separator, lineWidth: 1)
             )
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(charity.name), \(charity.category), \(isSelected ? "selected" : "not selected")")
     }
+}
+
+// MARK: - Charity Organization
+
+public struct CharityOrganization: Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let category: String
+    public let ein: String
+    public let phoneNumber: String
+    public let website: String
+    public let icon: String
+    
+    public init(
+        id: String = UUID().uuidString,
+        name: String,
+        category: String,
+        ein: String = "",
+        phoneNumber: String = "",
+        website: String = "",
+        icon: String = "heart.fill"
+    ) {
+        self.id = id
+        self.name = name
+        self.category = category
+        self.ein = ein
+        self.phoneNumber = phoneNumber
+        self.website = website
+        self.icon = icon
+    }
+    
+    public static let commonCharities: [CharityOrganization] = [
+        CharityOrganization(
+            id: "goodwill",
+            name: "Goodwill Industries",
+            category: "Thrift & Employment",
+            ein: "53-0196517",
+            website: "goodwill.org",
+            icon: "briefcase.fill"
+        ),
+        CharityOrganization(
+            id: "salvation-army",
+            name: "Salvation Army",
+            category: "Human Services",
+            ein: "58-0660607",
+            website: "salvationarmyusa.org",
+            icon: "shield.fill"
+        ),
+        CharityOrganization(
+            id: "habitat",
+            name: "Habitat for Humanity",
+            category: "Housing",
+            ein: "91-1914868",
+            website: "habitat.org",
+            icon: "house.fill"
+        ),
+        CharityOrganization(
+            id: "red-cross",
+            name: "American Red Cross",
+            category: "Disaster Relief",
+            ein: "53-0196605",
+            website: "redcross.org",
+            icon: "cross.fill"
+        ),
+        CharityOrganization(
+            id: "vietnam-vets",
+            name: "Vietnam Veterans of America",
+            category: "Veterans",
+            ein: "52-1149668",
+            website: "vva.org",
+            icon: "star.fill"
+        ),
+        CharityOrganization(
+            id: "amvets",
+            name: "AMVETS",
+            category: "Veterans",
+            ein: "54-0802270",
+            website: "amvets.org",
+            icon: "flag.fill"
+        ),
+        CharityOrganization(
+            id: "big-brothers",
+            name: "Big Brothers Big Sisters",
+            category: "Youth Mentoring",
+            ein: "23-1271730",
+            website: "bbbs.org",
+            icon: "person.2.fill"
+        ),
+        CharityOrganization(
+            id: "local",
+            name: "Local Charity",
+            category: "Community",
+            ein: "",
+            website: "",
+            icon: "mappin.circle.fill"
+        )
+    ]
 }

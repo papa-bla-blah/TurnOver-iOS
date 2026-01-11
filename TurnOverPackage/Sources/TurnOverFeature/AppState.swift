@@ -56,13 +56,20 @@ public class AppState: ObservableObject {
         guard index < capturedPhotos.count else { return }
         capturedPhotos.remove(at: index)
         // Update primary if needed
-        if capturedPhotos.isEmpty == false && !capturedPhotos.contains(where: { $0.isPrimary }) {
-            capturedPhotos[0] = Photo(
-                id: capturedPhotos[0].id,
-                itemId: capturedPhotos[0].itemId,
-                imageData: capturedPhotos[0].imageData,
-                isPrimary: true,
-                sortOrder: 0
+        if !capturedPhotos.isEmpty && !capturedPhotos.contains(where: { $0.isPrimary }) {
+            setPrimaryPhoto(at: 0)
+        }
+    }
+    
+    public func setPrimaryPhoto(at index: Int) {
+        guard index < capturedPhotos.count else { return }
+        for i in 0..<capturedPhotos.count {
+            capturedPhotos[i] = Photo(
+                id: capturedPhotos[i].id,
+                itemId: capturedPhotos[i].itemId,
+                imageData: capturedPhotos[i].imageData,
+                isPrimary: i == index,
+                sortOrder: capturedPhotos[i].sortOrder
             )
         }
     }
@@ -185,68 +192,40 @@ public class AppState: ObservableObject {
     // MARK: - Mock Data (For Simulator Testing)
     
     public func loadMockData() {
-        // Create mock photo data (simple colored rectangle)
         let mockPhotoData = createMockImageData(color: .systemBlue)
         
-        // Mock items for testing
         let mockItems: [Item] = [
             Item(
                 name: "Vintage Leather Jacket",
-                description: "Classic brown leather motorcycle jacket from the 1980s. Genuine leather with quilted lining. Minor wear on cuffs adds character. Size Large, fits true to size. Perfect for collectors or everyday wear.",
+                description: "Classic brown leather motorcycle jacket from the 1980s. Genuine leather with quilted lining.",
                 category: "Clothing",
                 condition: .good,
                 estimatedValue: 85,
                 confidenceScore: 0.82,
-                aiInsights: "Vintage leather jackets are highly sought after. This style sells well on Poshmark and eBay. Consider highlighting the era and authenticity.",
+                aiInsights: "Vintage leather jackets are highly sought after.",
                 photos: [Photo(imageData: mockPhotoData, isPrimary: true, sortOrder: 0)]
             ),
             Item(
                 name: "Sony WH-1000XM4 Headphones",
-                description: "Premium wireless noise-canceling headphones. Includes original case, charging cable, and audio cable. Excellent battery life, comfortable for long use. Minor cosmetic wear on headband.",
+                description: "Premium wireless noise-canceling headphones. Includes case and cables.",
                 category: "Electronics",
                 condition: .excellent,
                 estimatedValue: 175,
                 confidenceScore: 0.91,
-                aiInsights: "High-demand electronics item. Price competitively - these sell quickly on OfferUp and Facebook Marketplace. Include all accessories in photos.",
+                aiInsights: "High-demand electronics item.",
                 photos: [Photo(imageData: createMockImageData(color: .black), isPrimary: true, sortOrder: 0)]
-            ),
-            Item(
-                name: "Mid-Century Modern Chair",
-                description: "Authentic Danish-style lounge chair circa 1960s. Walnut frame with original upholstery. Some wear on armrests. Structurally sound and very comfortable.",
-                category: "Furniture",
-                condition: .good,
-                estimatedValue: 350,
-                confidenceScore: 0.76,
-                aiInsights: "Mid-century furniture commands premium prices. Local pickup recommended due to shipping costs. Etsy and Craigslist are good platforms for furniture.",
-                photos: [Photo(imageData: createMockImageData(color: .brown), isPrimary: true, sortOrder: 0)]
-            ),
-            Item(
-                name: "Collection of Classic Novels",
-                description: "Set of 12 hardcover classic novels including Hemingway, Fitzgerald, and Steinbeck. Vintage editions from 1950s-1970s. Dust jackets intact with minor wear.",
-                category: "Books",
-                condition: .fair,
-                estimatedValue: 45,
-                confidenceScore: 0.68,
-                aiInsights: "Book collections sell better as sets. Consider bundling or selling individually for rare editions. Good for donation if quick sale is priority.",
-                photos: [Photo(imageData: createMockImageData(color: .systemGreen), isPrimary: true, sortOrder: 0)]
             )
         ]
         
         items = mockItems
-        
-        // Also add a mock photo to captured photos for testing analysis flow
         capturedPhotos = [Photo(imageData: mockPhotoData, isPrimary: true, sortOrder: 0)]
     }
     
     private func createMockImageData(color: UIColor) -> Data {
         let size = CGSize(width: 400, height: 400)
         UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
-        
-        // Fill background
         color.setFill()
         UIRectFill(CGRect(origin: .zero, size: size))
-        
-        // Add placeholder text
         let text = "Mock Image"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.boldSystemFont(ofSize: 32),
@@ -260,10 +239,8 @@ public class AppState: ObservableObject {
             height: textSize.height
         )
         text.draw(in: textRect, withAttributes: attrs)
-        
         let image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        
         return image?.jpegData(compressionQuality: 0.8) ?? Data()
     }
     
@@ -274,8 +251,8 @@ public class AppState: ObservableObject {
             condition: .good,
             estimatedValue: 75,
             confidenceScore: 0.85,
-            description: "This is a mock analysis result for simulator testing. In production, this would contain AI-generated content describing the photographed item in detail for marketplace listings.",
-            insights: "Mock insight: This item would sell well on Facebook Marketplace or OfferUp. Price competitively for quick sale."
+            description: "Mock analysis result for simulator testing.",
+            insights: "Mock insight: This item would sell well on Facebook Marketplace."
         )
     }
 }

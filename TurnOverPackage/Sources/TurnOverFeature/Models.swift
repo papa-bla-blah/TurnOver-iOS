@@ -30,45 +30,6 @@ public enum ItemStatus: String, Codable, Sendable {
     case donated
 }
 
-public enum MarketplacePlatform: String, Codable, CaseIterable, Identifiable, Sendable {
-    case craigslist
-    case facebook
-    case nextdoor
-    case offerUp
-    case poshmark
-    case mercari
-    case etsy
-    case whatnot
-    
-    public var id: String { rawValue }
-    
-    public var displayName: String {
-        switch self {
-        case .craigslist: return "Craigslist"
-        case .facebook: return "Facebook Marketplace"
-        case .nextdoor: return "Nextdoor"
-        case .offerUp: return "OfferUp"
-        case .poshmark: return "Poshmark"
-        case .mercari: return "Mercari"
-        case .etsy: return "Etsy"
-        case .whatnot: return "Whatnot"
-        }
-    }
-    
-    public var icon: String {
-        switch self {
-        case .craigslist: return "list.bullet"
-        case .facebook: return "person.2"
-        case .nextdoor: return "house"
-        case .offerUp: return "tag"
-        case .poshmark: return "bag"
-        case .mercari: return "cart"
-        case .etsy: return "paintbrush"
-        case .whatnot: return "video"
-        }
-    }
-}
-
 // MARK: - Photo Model
 
 public struct Photo: Identifiable, Codable, Sendable {
@@ -101,9 +62,11 @@ public struct Item: Identifiable, Codable, Sendable {
     public var isVerified: Bool
     public var status: ItemStatus
     public var photos: [Photo]
-    public var selectedPlatforms: [MarketplacePlatform]
     public var createdAt: Date
     public var updatedAt: Date
+    
+    // Computed property for compatibility
+    public var dateAdded: Date { createdAt }
     
     public init(
         id: String = UUID().uuidString,
@@ -117,7 +80,6 @@ public struct Item: Identifiable, Codable, Sendable {
         isVerified: Bool = false,
         status: ItemStatus = .draft,
         photos: [Photo] = [],
-        selectedPlatforms: [MarketplacePlatform] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -132,36 +94,9 @@ public struct Item: Identifiable, Codable, Sendable {
         self.isVerified = isVerified
         self.status = status
         self.photos = photos
-        self.selectedPlatforms = selectedPlatforms
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
-}
-
-// MARK: - Charity Model
-
-public struct CharityOrganization: Identifiable, Codable, Sendable {
-    public let id: String
-    public var name: String
-    public var ein: String
-    public var phoneNumber: String
-    public var website: String
-    
-    public init(id: String = UUID().uuidString, name: String, ein: String, phoneNumber: String = "", website: String = "") {
-        self.id = id
-        self.name = name
-        self.ein = ein
-        self.phoneNumber = phoneNumber
-        self.website = website
-    }
-    
-    nonisolated(unsafe) public static let defaultCharities: [CharityOrganization] = [
-        CharityOrganization(name: "Goodwill Industries", ein: "53-0196517", phoneNumber: "1-800-466-3945", website: "goodwill.org"),
-        CharityOrganization(name: "Salvation Army", ein: "58-0660607", phoneNumber: "1-800-728-7825", website: "salvationarmyusa.org"),
-        CharityOrganization(name: "Habitat for Humanity", ein: "91-1914868", phoneNumber: "1-800-422-4828", website: "habitat.org"),
-        CharityOrganization(name: "Vietnam Veterans of America", ein: "23-7363034", phoneNumber: "1-800-882-1316", website: "vva.org"),
-        CharityOrganization(name: "Local Church/Shelter", ein: "", phoneNumber: "", website: "")
-    ]
 }
 
 // MARK: - Donation Model
@@ -169,7 +104,8 @@ public struct CharityOrganization: Identifiable, Codable, Sendable {
 public struct Donation: Identifiable, Codable, Sendable {
     public let id: String
     public var itemId: String
-    public var charity: CharityOrganization
+    public var charityId: String
+    public var charityName: String
     public var donationDate: Date
     public var donationValue: Double
     public var acquisitionDate: Date?
@@ -180,7 +116,8 @@ public struct Donation: Identifiable, Codable, Sendable {
     public init(
         id: String = UUID().uuidString,
         itemId: String,
-        charity: CharityOrganization,
+        charityId: String,
+        charityName: String,
         donationDate: Date = Date(),
         donationValue: Double,
         acquisitionDate: Date? = nil,
@@ -189,7 +126,8 @@ public struct Donation: Identifiable, Codable, Sendable {
     ) {
         self.id = id
         self.itemId = itemId
-        self.charity = charity
+        self.charityId = charityId
+        self.charityName = charityName
         self.donationDate = donationDate
         self.donationValue = donationValue
         self.acquisitionDate = acquisitionDate

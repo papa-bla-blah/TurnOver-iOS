@@ -4,127 +4,182 @@ import SwiftUI
 
 public struct DecisionView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var preferences: UserPreferences
+    @Environment(\.dismiss) private var dismiss
+    
     let analysisResult: AIAnalysisResult
     
-    @State private var showMarketplace = false
-    @State private var showCharity = false
+    @State private var showMarketplaceSelection = false
+    @State private var showCharitySelection = false
+    @State private var selectedAction: ItemAction?
+    
+    public init(analysisResult: AIAnalysisResult) {
+        self.analysisResult = analysisResult
+    }
     
     public var body: some View {
-        NavigationView {
-            VStack(spacing: AppTheme.spacingXL) {
-                Spacer()
-                
-                // Item summary
-                VStack(spacing: AppTheme.spacingSM) {
+        NavigationStack {
+            VStack(spacing: AppTheme.spacingLG) {
+                // Item Summary Card
+                VStack(spacing: AppTheme.spacingMD) {
                     Text(analysisResult.name)
-                        .font(.title)
-                        .fontWeight(.bold)
+                        .font(.title3.bold())
+                        .multilineTextAlignment(.center)
                     
-                    Text("$\(String(format: "%.0f", analysisResult.estimatedValue))")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(AppTheme.success)
+                    HStack(spacing: AppTheme.spacingLG) {
+                        VStack {
+                            Text("$\(String(format: "%.0f", analysisResult.estimatedValue))")
+                                .font(.title2.bold())
+                                .foregroundColor(AppTheme.success)
+                            Text("Est. Value")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.textSecondary)
+                        }
+                        
+                        Divider()
+                            .frame(height: 40)
+                        
+                        VStack {
+                            Text(analysisResult.condition.displayName)
+                                .font(.headline)
+                            Text("Condition")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.textSecondary)
+                        }
+                    }
                 }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(AppTheme.secondaryBackground)
+                .cornerRadius(AppTheme.radiusMD)
+                .padding(.horizontal)
                 
+                // Question
                 Text("What would you like to do?")
                     .font(.headline)
-                    .foregroundColor(AppTheme.textSecondary)
+                    .padding(.top, AppTheme.spacingMD)
                 
-                // Decision buttons
+                // Action Buttons
                 VStack(spacing: AppTheme.spacingMD) {
-                    // Sell button
-                    Button(action: { showMarketplace = true }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Image(systemName: "dollarsign.circle.fill")
-                                        .font(.title2)
-                                    Text("Sell It")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                }
-                                Text("List on marketplace platforms")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.8))
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
+                    // Sell Option
+                    ActionCard(
+                        icon: "dollarsign.circle.fill",
+                        title: "Sell It",
+                        subtitle: "List on marketplaces",
+                        color: AppTheme.success,
+                        action: {
+                            HapticManager.impact()
+                            selectedAction = .sell
+                            showMarketplaceSelection = true
                         }
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(AppTheme.primary)
-                        .cornerRadius(AppTheme.radiusMD)
-                    }
+                    )
                     
-                    // Donate button
-                    Button(action: { showCharity = true }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Image(systemName: "heart.fill")
-                                        .font(.title2)
-                                    Text("Donate It")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                }
-                                Text("Get a tax-deductible receipt")
-                                    .font(.caption)
-                                    .foregroundColor(AppTheme.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
+                    // Donate Option
+                    ActionCard(
+                        icon: "heart.circle.fill",
+                        title: "Donate It",
+                        subtitle: "Get a tax deduction receipt",
+                        color: AppTheme.primary,
+                        action: {
+                            HapticManager.impact()
+                            selectedAction = .donate
+                            showCharitySelection = true
                         }
-                        .foregroundColor(AppTheme.secondary)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.radiusMD)
-                                .stroke(AppTheme.secondary, lineWidth: 2)
-                        )
-                    }
+                    )
+                    
+                    // Keep Option
+                    ActionCard(
+                        icon: "archivebox.circle.fill",
+                        title: "Keep It",
+                        subtitle: "Save to inventory for later",
+                        color: AppTheme.warning,
+                        action: {
+                            HapticManager.impact()
+                            saveToInventory()
+                        }
+                    )
                 }
                 .padding(.horizontal)
                 
                 Spacer()
-                
-                // Save for later
-                Button("Save to Inventory") {
-                    let item = appState.createItem(from: analysisResult)
-                    appState.saveItem(item)
-                    dismissAll()
-                }
-                .font(.subheadline)
-                .foregroundColor(AppTheme.textSecondary)
-                .padding(.bottom)
             }
             .navigationTitle("Decision")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Back") {
-                        presentationMode.wrappedValue.dismiss()
+                        HapticManager.impact(.light)
+                        dismiss()
                     }
                 }
             }
-            .fullScreenCover(isPresented: $showMarketplace) {
+            .fullScreenCover(isPresented: $showMarketplaceSelection) {
                 MarketplaceSelectionView(analysisResult: analysisResult)
                     .environmentObject(appState)
+                    .environmentObject(preferences)
             }
-            .fullScreenCover(isPresented: $showCharity) {
+            .fullScreenCover(isPresented: $showCharitySelection) {
                 CharitySelectionView(analysisResult: analysisResult)
                     .environmentObject(appState)
+                    .environmentObject(preferences)
             }
         }
     }
     
-    private func dismissAll() {
-        // This will dismiss back to root
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.dismiss(animated: true)
-        }
+    private func saveToInventory() {
+        let item = appState.createItem(from: analysisResult)
+        appState.saveItem(item)
+        HapticManager.notification(.success)
+        dismiss()
     }
+}
+
+// MARK: - Action Card
+
+struct ActionCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: AppTheme.spacingMD) {
+                Image(systemName: icon)
+                    .font(.system(size: 40))
+                    .foregroundColor(color)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundColor(AppTheme.textPrimary)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(AppTheme.textTertiary)
+            }
+            .padding()
+            .background(AppTheme.surface)
+            .cornerRadius(AppTheme.radiusMD)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(subtitle)")
+        .accessibilityHint("Double tap to select")
+    }
+}
+
+// MARK: - Item Action
+
+enum ItemAction {
+    case sell
+    case donate
+    case keep
 }

@@ -4,143 +4,185 @@ import SwiftUI
 
 public struct ExportDonationView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var preferences: UserPreferences
+    @Environment(\.dismiss) private var dismiss
+    
     let analysisResult: AIAnalysisResult
     let charity: CharityOrganization
     
-    @State private var copied = false
+    @State private var receiptText: String = ""
+    @State private var showShareSheet = false
+    @State private var showCopiedAlert = false
     
-    private var receiptText: String {
-        let item = Item(
-            name: analysisResult.name,
-            description: analysisResult.description,
-            category: analysisResult.category,
-            condition: analysisResult.condition,
-            estimatedValue: analysisResult.estimatedValue,
-            confidenceScore: analysisResult.confidenceScore,
-            aiInsights: analysisResult.insights
-        )
-        return appState.generateDonationReceipt(for: item, charity: charity)
+    public init(analysisResult: AIAnalysisResult, charity: CharityOrganization) {
+        self.analysisResult = analysisResult
+        self.charity = charity
     }
     
     public var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
+                // Charity Header
+                HStack(spacing: AppTheme.spacingMD) {
+                    Image(systemName: charity.icon)
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 50)
+                        .background(AppTheme.primary)
+                        .cornerRadius(AppTheme.radiusSM)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(charity.name)
+                            .font(.headline)
+                        Text(charity.category)
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(AppTheme.secondaryBackground)
+                
+                // Receipt Preview
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
-                        // Success header
-                        HStack {
-                            Image(systemName: "heart.circle.fill")
-                                .foregroundColor(AppTheme.secondary)
-                                .font(.title)
-                            Text("Receipt Ready!")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        
-                        // Charity info
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Donating to:")
+                        // Tax Info Banner
+                        HStack(spacing: AppTheme.spacingSM) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(AppTheme.info)
+                            Text("This receipt is for your tax records")
                                 .font(.subheadline)
-                                .foregroundColor(AppTheme.textSecondary)
-                            Text(charity.name)
-                                .font(.headline)
                         }
-                        .padding(.horizontal)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AppTheme.info.opacity(0.1))
+                        .cornerRadius(AppTheme.radiusSM)
                         
-                        // Value reminder
-                        if analysisResult.estimatedValue > 5000 {
+                        // Item Summary
+                        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                            Text("Donated Item")
+                                .font(.headline)
+                            
                             HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(analysisResult.name)
+                                        .font(.subheadline.weight(.medium))
+                                    Text(analysisResult.condition.displayName)
+                                        .font(.caption)
+                                        .foregroundColor(AppTheme.textSecondary)
+                                }
+                                Spacer()
+                                Text("$\(String(format: "%.2f", analysisResult.estimatedValue))")
+                                    .font(.title3.bold())
+                                    .foregroundColor(AppTheme.success)
+                            }
+                            .padding()
+                            .background(AppTheme.secondaryBackground)
+                            .cornerRadius(AppTheme.radiusSM)
+                        }
+                        
+                        // High Value Warning
+                        if analysisResult.estimatedValue > 5000 {
+                            HStack(spacing: AppTheme.spacingSM) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(AppTheme.accent)
-                                Text("Items over $5,000 require a qualified appraisal for tax deduction.")
+                                    .foregroundColor(AppTheme.warning)
+                                Text("Items over $5,000 require a qualified appraisal for tax deduction")
                                     .font(.caption)
                             }
                             .padding()
-                            .background(AppTheme.accent.opacity(0.1))
+                            .background(AppTheme.warning.opacity(0.1))
                             .cornerRadius(AppTheme.radiusSM)
-                            .padding(.horizontal)
                         }
                         
-                        // Receipt text
+                        // Receipt Text
+                        Text("Receipt")
+                            .font(.headline)
+                            .padding(.top, AppTheme.spacingSM)
+                        
                         Text(receiptText)
                             .font(.system(.body, design: .monospaced))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(AppTheme.background)
-                            .cornerRadius(AppTheme.radiusMD)
-                            .padding(.horizontal)
+                            .background(AppTheme.secondaryBackground)
+                            .cornerRadius(AppTheme.radiusSM)
                     }
+                    .padding()
                 }
                 
-                // Action buttons
+                // Action Buttons
                 VStack(spacing: AppTheme.spacingMD) {
-                    Button(action: copyToClipboard) {
+                    // Share
+                    Button(action: {
+                        HapticManager.impact()
+                        showShareSheet = true
+                    }) {
                         HStack {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            Text(copied ? "Copied!" : "Copy Receipt")
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share Receipt")
                         }
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     
-                    Button(action: shareText) {
+                    // Copy
+                    Button(action: {
+                        HapticManager.notification(.success)
+                        UIPasteboard.general.string = receiptText
+                        showCopiedAlert = true
+                    }) {
                         HStack {
-                            Image(systemName: "square.and.arrow.up")
-                            Text("Share")
+                            Image(systemName: "doc.on.doc")
+                            Text("Copy to Clipboard")
                         }
                     }
                     .buttonStyle(SecondaryButtonStyle())
                     
-                    Button("Done") {
-                        saveAndDismiss()
+                    // Done
+                    Button(action: {
+                        HapticManager.impact()
+                        saveAndFinish()
+                    }) {
+                        Text("Save to Inventory & Done")
+                            .font(.subheadline)
                     }
                     .foregroundColor(AppTheme.textSecondary)
                 }
                 .padding()
+                .background(AppTheme.surface)
             }
             .navigationTitle("Donation Receipt")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Back") {
-                        presentationMode.wrappedValue.dismiss()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        HapticManager.impact(.light)
+                        dismiss()
                     }
                 }
+            }
+            .onAppear {
+                generateReceipt()
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(items: [receiptText])
+            }
+            .alert("Copied!", isPresented: $showCopiedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Receipt copied to clipboard")
             }
         }
     }
     
-    private func copyToClipboard() {
-        UIPasteboard.general.string = receiptText
-        copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            copied = false
-        }
+    private func generateReceipt() {
+        let item = appState.createItem(from: analysisResult)
+        receiptText = appState.generateDonationReceipt(for: item, charity: charity)
     }
     
-    private func shareText() {
-        let activityVC = UIActivityViewController(
-            activityItems: [receiptText],
-            applicationActivities: nil
-        )
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootVC = window.rootViewController {
-            rootVC.present(activityVC, animated: true)
-        }
-    }
-    
-    private func saveAndDismiss() {
-        var item = appState.createItem(from: analysisResult)
-        item.status = .donated
+    private func saveAndFinish() {
+        let item = appState.createItem(from: analysisResult)
         appState.saveItem(item)
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.dismiss(animated: true)
-        }
+        HapticManager.notification(.success)
+        dismiss()
     }
 }
