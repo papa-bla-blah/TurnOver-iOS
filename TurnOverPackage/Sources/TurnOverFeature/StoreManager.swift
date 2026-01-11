@@ -36,6 +36,41 @@ public class StoreManager: ObservableObject {
         purchasedProductIDs.contains(ProductID.unlimitedAnalysis.rawValue) || hasPremium
     }
     
+    // MARK: - Usage Tracking (Free tier limits)
+    private let freeAnalysisLimit = 5
+    private let usageKey = "analysis_usage_count"
+    private let usageDateKey = "analysis_usage_date"
+    
+    public var canUseAI: Bool {
+        if hasUnlimitedAnalysis || hasPremium { return true }
+        return dailyUsageCount < freeAnalysisLimit
+    }
+    
+    public var dailyUsageCount: Int {
+        let today = Calendar.current.startOfDay(for: Date())
+        if let savedDate = UserDefaults.standard.object(forKey: usageDateKey) as? Date,
+           Calendar.current.isDate(savedDate, inSameDayAs: today) {
+            return UserDefaults.standard.integer(forKey: usageKey)
+        }
+        return 0
+    }
+    
+    public var remainingFreeAnalyses: Int {
+        max(0, freeAnalysisLimit - dailyUsageCount)
+    }
+    
+    public func recordAnalysisUsage() {
+        guard !hasUnlimitedAnalysis && !hasPremium else { return }
+        let today = Calendar.current.startOfDay(for: Date())
+        if let savedDate = UserDefaults.standard.object(forKey: usageDateKey) as? Date,
+           Calendar.current.isDate(savedDate, inSameDayAs: today) {
+            UserDefaults.standard.set(dailyUsageCount + 1, forKey: usageKey)
+        } else {
+            UserDefaults.standard.set(today, forKey: usageDateKey)
+            UserDefaults.standard.set(1, forKey: usageKey)
+        }
+    }
+    
     // MARK: - Transaction Listener
     private var updateListenerTask: Task<Void, Error>?
     
@@ -361,3 +396,7 @@ struct ProductRow: View {
         .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
     }
 }
+
+// MARK: - Type Alias for Compatibility
+@available(iOS 15.0, *)
+public typealias PremiumUpgradeView = PremiumUpsellView
