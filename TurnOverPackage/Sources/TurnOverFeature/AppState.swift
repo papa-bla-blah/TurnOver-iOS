@@ -15,12 +15,18 @@ public class AppState: ObservableObject {
     @Published public var apiKey: String = ""
     
     private let userDefaultsAPIKeyKey = "openai_api_key"
+    private let userDefaultsItemsKey = "saved_items"
     
     private init() {
         loadAPIKey()
+        loadSavedItems()
     }
     
     // MARK: - API Key Management
+    
+    public var hasAPIKey: Bool {
+        !apiKey.isEmpty && apiKey.hasPrefix("sk-")
+    }
     
     public func loadAPIKey() {
         if let key = UserDefaults.standard.string(forKey: userDefaultsAPIKeyKey) {
@@ -37,6 +43,39 @@ public class AppState: ObservableObject {
         Task {
             await AIService.shared.setAPIKey(key)
         }
+    }
+    
+    public func clearAPIKey() {
+        apiKey = ""
+        UserDefaults.standard.removeObject(forKey: userDefaultsAPIKeyKey)
+        Task {
+            await AIService.shared.setAPIKey("")
+        }
+    }
+    
+    // MARK: - Data Persistence
+    
+    private func loadSavedItems() {
+        // Load items from UserDefaults (simple persistence)
+        // In production, use CoreData or SwiftData
+        if let data = UserDefaults.standard.data(forKey: userDefaultsItemsKey),
+           let decoded = try? JSONDecoder().decode([Item].self, from: data) {
+            items = decoded
+        }
+    }
+    
+    private func saveItemsToStorage() {
+        if let encoded = try? JSONEncoder().encode(items) {
+            UserDefaults.standard.set(encoded, forKey: userDefaultsItemsKey)
+        }
+    }
+    
+    public func clearAllData() {
+        items = []
+        currentItem = nil
+        capturedPhotos = []
+        UserDefaults.standard.removeObject(forKey: userDefaultsItemsKey)
+        clearAPIKey()
     }
     
     // MARK: - Photo Management
@@ -125,10 +164,36 @@ public class AppState: ObservableObject {
         }
         currentItem = nil
         clearPhotos()
+        saveItemsToStorage()
     }
     
     public func deleteItem(_ item: Item) {
         items.removeAll { $0.id == item.id }
+        saveItemsToStorage()
+    }
+    
+    public func updateItemStatus(_ item: Item, status: ItemStatus) {
+        if let index = items.firstIndex(where: { $0.id == item.id }) {
+            var updatedItem = items[index]
+            updatedItem.status = status
+            updatedItem.updatedAt = Date()
+            items[index] = updatedItem
+            saveItemsToStorage()
+        }
+    }
+    
+    // MARK: - Statistics
+    
+    public var totalItemsValue: Double {
+        items.reduce(0) { $0 + $1.estimatedValue }
+    }
+    
+    public var soldItemsValue: Double {
+        items.filter { $0.status == .sold }.reduce(0) { $0 + $1.estimatedValue }
+    }
+    
+    public var donatedItemsValue: Double {
+        items.filter { $0.status == .donated }.reduce(0) { $0 + $1.estimatedValue }
     }
     
     // MARK: - Export Helpers

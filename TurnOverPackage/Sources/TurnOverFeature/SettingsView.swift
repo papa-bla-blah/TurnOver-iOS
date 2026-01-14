@@ -11,6 +11,14 @@ public struct SettingsView: View {
     @State private var apiKeyInput: String = ""
     @State private var showAPIKey = false
     @State private var saved = false
+    @State private var showResetAlert = false
+    
+    // App Store URLs
+    private let privacyURL = URL(string: "https://www.ogsaas.com/turnover/privacy")!
+    private let termsURL = URL(string: "https://www.ogsaas.com/turnover/terms")!
+    private let supportEmail = "support@ogsaas.com"
+    private let openAIURL = URL(string: "https://platform.openai.com/api-keys")!
+    private let irsURL = URL(string: "https://www.irs.gov/charities-non-profits/charitable-organizations/charitable-contribution-deductions")!
     
     public var body: some View {
         Form {
@@ -68,6 +76,19 @@ public struct SettingsView: View {
             
             // MARK: - AI Configuration
             Section {
+                // Status indicator
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Image(systemName: appState.hasAPIKey ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundColor(appState.hasAPIKey ? AppTheme.success : AppTheme.error)
+                        Text(appState.hasAPIKey ? "Connected" : "Mock Data")
+                            .foregroundColor(appState.hasAPIKey ? AppTheme.success : AppTheme.error)
+                            .font(.subheadline.weight(.medium))
+                    }
+                }
+                
                 VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
                     HStack {
                         if showAPIKey {
@@ -98,6 +119,16 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(apiKeyInput.isEmpty)
+                }
+                
+                if appState.hasAPIKey {
+                    Button(role: .destructive) {
+                        appState.clearAPIKey()
+                        apiKeyInput = ""
+                        HapticManager.notification(.warning)
+                    } label: {
+                        Label("Remove API Key", systemImage: "trash")
+                    }
                 }
                 
                 Toggle(isOn: $preferences.showAnalysisInsights) {
@@ -138,36 +169,77 @@ public struct SettingsView: View {
                 Text("These settings are remembered for next time")
             }
             
+            // MARK: - Help & Resources
+            Section {
+                Link(destination: openAIURL) {
+                    Label("Get OpenAI API Key", systemImage: "key")
+                }
+                
+                Link(destination: irsURL) {
+                    Label("IRS Donation Guidelines", systemImage: "doc.text")
+                }
+                
+                Button {
+                    sendSupportEmail()
+                } label: {
+                    Label("Contact Support", systemImage: "envelope")
+                }
+            } header: {
+                Text("Help & Resources")
+            }
+            
+            // MARK: - Legal (Required for App Store)
+            Section {
+                Link(destination: privacyURL) {
+                    HStack {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
+                    }
+                }
+                
+                Link(destination: termsURL) {
+                    HStack {
+                        Label("Terms of Service", systemImage: "doc.plaintext")
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
+                    }
+                }
+            } header: {
+                Text("Legal")
+            }
+            
             // MARK: - About
             Section {
-                LabeledContent("Version", value: "1.0.0")
+                LabeledContent("Version", value: appVersion)
+                LabeledContent("Build", value: buildNumber)
                 LabeledContent("AI Model", value: "GPT-4o Mini")
                 LabeledContent("Platform", value: "iOS \(UIDevice.current.systemVersion)")
             } header: {
                 Text("About")
             }
             
-            // MARK: - Help & Resources
-            Section {
-                Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
-                    Label("Get OpenAI API Key", systemImage: "key")
-                }
-                
-                Link(destination: URL(string: "https://www.irs.gov/charities-non-profits/charitable-organizations/charitable-contribution-deductions")!) {
-                    Label("IRS Donation Guidelines", systemImage: "doc.text")
-                }
-            } header: {
-                Text("Help & Resources")
-            }
-            
-            // MARK: - Reset
+            // MARK: - Data Management
             Section {
                 Button(role: .destructive) {
-                    HapticManager.notification(.warning)
-                    preferences.resetToDefaults()
+                    showResetAlert = true
                 } label: {
                     Label("Reset All Settings", systemImage: "arrow.counterclockwise")
                 }
+                
+                Button(role: .destructive) {
+                    showResetAlert = true
+                } label: {
+                    Label("Clear All Data", systemImage: "trash")
+                }
+            } header: {
+                Text("Data Management")
+            } footer: {
+                Text("This will remove all saved items and preferences")
             }
         }
         .navigationTitle("Settings")
@@ -175,7 +247,19 @@ public struct SettingsView: View {
         .onAppear {
             apiKeyInput = appState.apiKey
         }
+        .alert("Clear All Data?", isPresented: $showResetAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) {
+                preferences.resetToDefaults()
+                appState.clearAllData()
+                HapticManager.notification(.warning)
+            }
+        } message: {
+            Text("This will remove all items, donations, and preferences. This cannot be undone.")
+        }
     }
+    
+    // MARK: - Computed Properties
     
     private var sensitivityLabel: String {
         switch preferences.levelLockSensitivity {
@@ -186,6 +270,16 @@ public struct SettingsView: View {
         }
     }
     
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+    
+    private var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+    
+    // MARK: - Actions
+    
     private func saveAPIKey() {
         appState.saveAPIKey(apiKeyInput)
         saved = true
@@ -193,4 +287,27 @@ public struct SettingsView: View {
             saved = false
         }
     }
+    
+    private func sendSupportEmail() {
+        let subject = "TurnOver App Support - v\(appVersion)"
+        let urlString = "mailto:\(supportEmail)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
 }
+
+// MARK: - Preview
+
+#if DEBUG
+@available(iOS 15.0, *)
+struct SettingsView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            SettingsView()
+                .environmentObject(AppState.shared)
+                .environmentObject(UserPreferences.shared)
+        }
+    }
+}
+#endif
