@@ -11,9 +11,11 @@ public struct SettingsView: View {
     @State private var apiKeyInput: String = ""
     @State private var showAPIKey = false
     @State private var saved = false
-    @State private var showResetAlert = false
+    @State private var showClearConfirm = false
     
-    // App Store URLs
+    // App Constants
+    private let appVersion = "1.0.0"
+    private let aiModel = "GPT-4o Mini"
     private let privacyURL = URL(string: "https://www.ogsaas.com/turnover/privacy")!
     private let termsURL = URL(string: "https://www.ogsaas.com/turnover/terms")!
     private let supportEmail = "support@ogsaas.com"
@@ -76,19 +78,6 @@ public struct SettingsView: View {
             
             // MARK: - AI Configuration
             Section {
-                // Status indicator
-                HStack {
-                    Text("Status")
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Image(systemName: appState.hasAPIKey ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundColor(appState.hasAPIKey ? AppTheme.success : AppTheme.error)
-                        Text(appState.hasAPIKey ? "Connected" : "Mock Data")
-                            .foregroundColor(appState.hasAPIKey ? AppTheme.success : AppTheme.error)
-                            .font(.subheadline.weight(.medium))
-                    }
-                }
-                
                 VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
                     HStack {
                         if showAPIKey {
@@ -119,16 +108,6 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(apiKeyInput.isEmpty)
-                }
-                
-                if appState.hasAPIKey {
-                    Button(role: .destructive) {
-                        appState.clearAPIKey()
-                        apiKeyInput = ""
-                        HapticManager.notification(.warning)
-                    } label: {
-                        Label("Remove API Key", systemImage: "trash")
-                    }
                 }
                 
                 Toggle(isOn: $preferences.showAnalysisInsights) {
@@ -191,23 +170,11 @@ public struct SettingsView: View {
             // MARK: - Legal (Required for App Store)
             Section {
                 Link(destination: privacyURL) {
-                    HStack {
-                        Label("Privacy Policy", systemImage: "hand.raised")
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.textSecondary)
-                    }
+                    Label("Privacy Policy", systemImage: "hand.raised")
                 }
                 
                 Link(destination: termsURL) {
-                    HStack {
-                        Label("Terms of Service", systemImage: "doc.plaintext")
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.textSecondary)
-                    }
+                    Label("Terms of Service", systemImage: "doc.plaintext")
                 }
             } header: {
                 Text("Legal")
@@ -216,30 +183,37 @@ public struct SettingsView: View {
             // MARK: - About
             Section {
                 LabeledContent("Version", value: appVersion)
-                LabeledContent("Build", value: buildNumber)
-                LabeledContent("AI Model", value: "GPT-4o Mini")
+                LabeledContent("AI Model", value: aiModel)
                 LabeledContent("Platform", value: "iOS \(UIDevice.current.systemVersion)")
             } header: {
                 Text("About")
+            } footer: {
+                Text("TurnOver - Sell or Donate with AI\n© 2026 OG SaaS")
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
             
             // MARK: - Data Management
             Section {
                 Button(role: .destructive) {
-                    showResetAlert = true
-                } label: {
-                    Label("Reset All Settings", systemImage: "arrow.counterclockwise")
-                }
-                
-                Button(role: .destructive) {
-                    showResetAlert = true
+                    showClearConfirm = true
                 } label: {
                     Label("Clear All Data", systemImage: "trash")
                 }
             } header: {
                 Text("Data Management")
             } footer: {
-                Text("This will remove all saved items and preferences")
+                Text("Removes all items, donations, and preferences")
+            }
+            
+            // MARK: - Reset Settings
+            Section {
+                Button(role: .destructive) {
+                    HapticManager.notification(.warning)
+                    preferences.resetToDefaults()
+                } label: {
+                    Label("Reset Settings to Defaults", systemImage: "arrow.counterclockwise")
+                }
             }
         }
         .navigationTitle("Settings")
@@ -247,19 +221,17 @@ public struct SettingsView: View {
         .onAppear {
             apiKeyInput = appState.apiKey
         }
-        .alert("Clear All Data?", isPresented: $showResetAlert) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) {
-                preferences.resetToDefaults()
-                appState.clearAllData()
+        .confirmationDialog("Clear All Data", isPresented: $showClearConfirm) {
+            Button("Clear All Data", role: .destructive) {
                 HapticManager.notification(.warning)
+                appState.clearAllData()
+                preferences.resetToDefaults()
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove all items, donations, and preferences. This cannot be undone.")
+            Text("This will remove all saved items, donations, and preferences. This cannot be undone.")
         }
     }
-    
-    // MARK: - Computed Properties
     
     private var sensitivityLabel: String {
         switch preferences.levelLockSensitivity {
@@ -270,16 +242,6 @@ public struct SettingsView: View {
         }
     }
     
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-    }
-    
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-    }
-    
-    // MARK: - Actions
-    
     private func saveAPIKey() {
         appState.saveAPIKey(apiKeyInput)
         saved = true
@@ -289,25 +251,8 @@ public struct SettingsView: View {
     }
     
     private func sendSupportEmail() {
-        let subject = "TurnOver App Support - v\(appVersion)"
-        let urlString = "mailto:\(supportEmail)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        if let url = URL(string: urlString) {
+        if let url = URL(string: "mailto:\(supportEmail)?subject=TurnOver%20App%20Support") {
             UIApplication.shared.open(url)
         }
     }
 }
-
-// MARK: - Preview
-
-#if DEBUG
-@available(iOS 15.0, *)
-struct SettingsView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationStack {
-            SettingsView()
-                .environmentObject(AppState.shared)
-                .environmentObject(UserPreferences.shared)
-        }
-    }
-}
-#endif
